@@ -1,0 +1,20 @@
+{
+  "application": {
+    "name": "demo-app",
+    "command": [
+      "python3",
+      "examples/demo-app/app.py"
+    ]
+  },
+  "compatibility": {
+    "supported_os": [
+      "ubuntu",
+      "kylin",
+      "uos",
+      "debian"
+    ]
+  },
+  "tests": {
+    "application_runtime": true
+  }
+}
