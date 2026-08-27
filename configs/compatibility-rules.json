@@ -1,0 +1,101 @@
+{
+  "platforms": {
+    "generic-linux": {
+      "name": "Generic Linux",
+      "supported": true
+    },
+    "debian": {
+      "name": "Debian Family",
+      "supported": true,
+      "ids": [
+        "debian",
+        "ubuntu"
+      ]
+    },
+    "rhel": {
+      "name": "RHEL Family",
+      "supported": true,
+      "ids": [
+        "rhel",
+        "centos",
+        "rocky",
+        "almalinux",
+        "fedora",
+        "openEuler"
+      ]
+    },
+    "kylin": {
+      "name": "Kylin Linux",
+      "supported": true,
+      "ids": [
+        "kylin"
+      ]
+    },
+    "uos": {
+      "name": "UnionTech UOS",
+      "supported": true,
+      "ids": [
+        "uos",
+        "uniontech"
+      ]
+    }
+  },
+  "architectures": {
+    "x86_64": {
+      "name": "x86_64",
+      "supported": true,
+      "aliases": [
+        "x86_64",
+        "amd64"
+      ]
+    },
+    "arm64": {
+      "name": "ARM64",
+      "supported": true,
+      "aliases": [
+        "aarch64",
+        "arm64",
+        "armv8",
+        "armv8l"
+      ]
+    },
+    "ppc64le": {
+      "name": "PowerPC 64 LE",
+      "supported": true,
+      "aliases": [
+        "ppc64le"
+      ]
+    },
+    "s390x": {
+      "name": "IBM Z",
+      "supported": true,
+      "aliases": [
+        "s390x"
+      ]
+    }
+  },
+  "compatibility": {
+    "supported_os": [
+      "ubuntu",
+      "debian",
+      "kylin",
+      "uos",
+      "rhel",
+      "centos",
+      "rocky",
+      "almalinux",
+      "fedora",
+      "openEuler"
+    ],
+    "supported_architectures": [
+      "x86_64",
+      "amd64",
+      "aarch64",
+      "arm64",
+      "armv8",
+      "armv8l",
+      "ppc64le",
+      "s390x"
+    ]
+  }
+}

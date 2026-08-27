@@ -1,11 +1,34 @@
 {
-  "application": {
-    "name": "demo-app",
-    "command": [
-      "python3",
-      "examples/demo-app/app.py"
-    ]
-  },
+  "applications": [
+    {
+      "name": "demo-app",
+      "command": [
+        "python3",
+        "examples/demo-app/app.py"
+      ]
+    },
+    {
+      "name": "shell-demo",
+      "command": [
+        "bash",
+        "examples/shell-demo/run.sh"
+      ]
+    }
+  ],
+  "deployment_applications": [
+    {
+      "name": "demo-java-app",
+      "command": [
+        "java",
+        "-jar",
+        "examples/demo-java-app/target/demo-app-1.0.0.jar"
+      ],
+      "host": "127.0.0.1",
+      "port": 8080,
+      "health_path": "/health",
+      "api_path": "/api/test"
+    }
+  ],
   "compatibility": {
     "supported_os": [
       "ubuntu",
@@ -14,7 +37,25 @@
       "debian"
     ]
   },
+  "commands": [
+    "sh",
+    "bash",
+    "ls",
+    "cat",
+    "grep",
+    "sed"
+  ],
   "tests": {
-    "application_runtime": true
+    "python_runtime": true,
+    "command_availability": true,
+    "shell_runtime": true,
+    "dependency_check": true,
+    "os_compatibility": true,
+    "filesystem_compatibility": true,
+    "application_runtime": true,
+    "permission_compatibility": true,
+    "process_compatibility": true,
+    "network_compatibility": true,
+    "deployment_test": true
   }
 }

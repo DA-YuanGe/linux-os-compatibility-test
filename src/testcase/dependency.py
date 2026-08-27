@@ -22,8 +22,15 @@ class DependencyTest(TestCase):
 
         results = checker.check_all(required_commands)
 
+        java_result = checker.check_java(
+            min_major_version=17
+        )
+
+        results.append(java_result)
+
         failed = [
-            item for item in results
+            item
+            for item in results
             if item["status"] == "FAIL"
         ]
 

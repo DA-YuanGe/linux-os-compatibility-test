@@ -1,27 +1,29 @@
 #!/usr/bin/env python3
 
-import json
 from pathlib import Path
 
 from testcase.base import TestCase
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-CONFIG_FILE = PROJECT_ROOT / "configs" / "test-case.json"
-
-
 class OSCompatibilityTest(TestCase):
     """Check whether the current Linux distribution is supported."""
 
-    def __init__(self):
-        super().__init__()
-        self.name = "os_compatibility"
-        self.category = "compatibility"
+    def __init__(self, supported_os=None):
+        super().__init__(
+            name="os_compatibility",
+            category="compatibility",
+            description="Verify that the current operating system is supported.",
+            tags=["compatibility", "os", "config-driven"],
+        )
+
+        self.supported_os = supported_os or []
 
     def execute(self):
         os_info = {}
 
-        content = Path("/etc/os-release").read_text(encoding="utf-8")
+        content = Path("/etc/os-release").read_text(
+            encoding="utf-8"
+        )
 
         for line in content.splitlines():
             if "=" not in line:
@@ -32,27 +34,25 @@ class OSCompatibilityTest(TestCase):
 
         current_os = os_info.get("ID", "")
 
-        config = json.loads(
-            CONFIG_FILE.read_text(encoding="utf-8")
-        )
+        if not self.supported_os:
+            return {
+                "status": "SKIP",
+                "message": "No supported operating systems are configured.",
+                "current_os": current_os,
+                "supported_os": [],
+            }
 
-        supported_os = config.get(
-            "compatibility", {}
-        ).get(
-            "supported_os", []
-        )
-
-        if current_os in supported_os:
+        if current_os in self.supported_os:
             return {
                 "status": "PASS",
                 "message": "Current operating system is supported.",
                 "current_os": current_os,
-                "supported_os": supported_os,
+                "supported_os": self.supported_os,
             }
 
         return {
             "status": "FAIL",
             "message": "Current operating system is not supported.",
             "current_os": current_os,
-            "supported_os": supported_os,
+            "supported_os": self.supported_os,
         }

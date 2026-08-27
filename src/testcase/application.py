@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
-import json
 import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -9,37 +9,37 @@ from testcase.base import TestCase
 
 
 class ApplicationRuntimeTest(TestCase):
-    """Test whether the configured application can start and execute."""
+    """Test whether a configured application can start and execute."""
 
-    def __init__(self):
-        super().__init__()
-        self.name = "application_runtime"
-        self.category = "application"
+    def __init__(self, application):
+        super().__init__(
+            name="application_runtime",
+            category="application",
+            description=(
+                "Verify that the configured application "
+                "can start and execute."
+            ),
+            tags=[
+                "application",
+                "runtime",
+                "config-driven",
+            ],
+        )
+
+        self.application = application or {}
 
     def execute(self):
         project_root = Path(__file__).resolve().parents[2]
-        config_file = project_root / "configs" / "test-case.json"
 
-        if not config_file.exists():
-            return {
-                "status": "FAIL",
-                "message": "Test configuration file was not found.",
-                "config": str(config_file),
-            }
+        application_name = self.application.get(
+            "name",
+            "",
+        )
 
-        try:
-            with config_file.open("r", encoding="utf-8") as file:
-                config = json.load(file)
-        except Exception as exc:
-            return {
-                "status": "FAIL",
-                "message": "Failed to load test configuration.",
-                "error": str(exc),
-            }
-
-        application = config.get("application", {})
-        application_name = application.get("name", "")
-        command = application.get("command", [])
+        command = self.application.get(
+            "command",
+            [],
+        )
 
         if not application_name:
             return {
@@ -50,66 +50,137 @@ class ApplicationRuntimeTest(TestCase):
         if not isinstance(command, list) or not command:
             return {
                 "status": "FAIL",
-                "message": "Application command is not configured correctly.",
+                "message": (
+                    "Application command is not "
+                    "configured correctly."
+                ),
                 "application": application_name,
             }
+
+        process = None
 
         try:
             started_at = datetime.now()
 
-            result = subprocess.run(
+            process = subprocess.Popen(
                 command,
                 cwd=project_root,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=10,
             )
 
-            finished_at = datetime.now()
+            startup_timeout = 10
+            deadline = time.time() + startup_timeout
 
-            output = result.stdout.strip()
-            error = result.stderr.strip()
+            while time.time() < deadline:
+                return_code = process.poll()
 
-            return_code = result.returncode
+                if return_code is not None:
+                    stdout, stderr = process.communicate()
 
-            if return_code != 0:
+                    finished_at = datetime.now()
+
+                    duration_ms = int(
+                        (
+                            finished_at - started_at
+                        ).total_seconds() * 1000
+                    )
+
+                    output = stdout.strip()
+                    error = stderr.strip()
+
+                    if return_code != 0:
+                        return {
+                            "status": "FAIL",
+                            "message": (
+                                "Configured application "
+                                "execution failed."
+                            ),
+                            "application": application_name,
+                            "command": command,
+                            "return_code": return_code,
+                            "stdout": output,
+                            "stderr": error,
+                            "duration_ms": duration_ms,
+                        }
+
+                    return {
+                        "status": "PASS",
+                        "message": (
+                            "Configured application "
+                            "started and exited successfully."
+                        ),
+                        "application": application_name,
+                        "command": command,
+                        "return_code": return_code,
+                        "output": output,
+                        "duration_ms": duration_ms,
+                        "execution_mode": "short_lived",
+                    }
+
+                time.sleep(0.2)
+
+            if process.poll() is None:
+                pid = process.pid
+
+                process.terminate()
+
+                try:
+                    stdout, stderr = process.communicate(
+                        timeout=5
+                    )
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    stdout, stderr = process.communicate()
+
+                finished_at = datetime.now()
+
+                duration_ms = int(
+                    (
+                        finished_at - started_at
+                    ).total_seconds() * 1000
+                )
+
                 return {
-                    "status": "FAIL",
-                    "message": "Configured application execution failed.",
+                    "status": "PASS",
+                    "message": (
+                        "Configured application "
+                        "started successfully and "
+                        "remained running."
+                    ),
                     "application": application_name,
                     "command": command,
-                    "return_code": return_code,
-                    "stdout": output,
-                    "stderr": error,
-                    "duration_ms": int(
-                        (finished_at - started_at).total_seconds() * 1000
-                    ),
+                    "pid": pid,
+                    "return_code": None,
+                    "stdout": (stdout or "").strip(),
+                    "stderr": (stderr or "").strip(),
+                    "duration_ms": duration_ms,
+                    "execution_mode": "long_running",
                 }
 
-            return {
-                "status": "PASS",
-                "message": "Configured application started and executed successfully.",
-                "application": application_name,
-                "command": command,
-                "return_code": return_code,
-                "output": output,
-                "duration_ms": int(
-                    (finished_at - started_at).total_seconds() * 1000
-                ),
-            }
-
-        except subprocess.TimeoutExpired:
-            return {
-                "status": "FAIL",
-                "message": "Configured application execution timed out.",
-                "application": application_name,
-                "command": command,
-            }
-
         except Exception as exc:
+            if process is not None:
+                try:
+                    if process.poll() is None:
+                        process.terminate()
+
+                        try:
+                            process.communicate(
+                                timeout=5
+                            )
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.communicate()
+                except Exception:
+                    pass
+
             return {
                 "status": "FAIL",
-                "message": "Failed to execute configured application.",
+                "message": (
+                    "Failed to execute configured "
+                    "application."
+                ),
                 "application": application_name,
                 "command": command,
                 "error": str(exc),

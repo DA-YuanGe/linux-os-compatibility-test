@@ -7,23 +7,26 @@ from testcase.base import TestCase
 
 
 class CommandAvailabilityTest(TestCase):
-    """Test availability and execution of basic Linux commands."""
+    """Test availability and execution of configured Linux commands."""
 
-    def __init__(self):
-        super().__init__()
-        self.name = "command_availability"
-        self.category = "system"
+    def __init__(self, commands=None):
+        super().__init__(
+            name="command_availability",
+            category="system",
+            description="Verify that configured system commands are available and executable.",
+            tags=["system", "command", "config-driven"],
+        )
 
-        self.commands = [
-            "sh",
-            "bash",
-            "ls",
-            "cat",
-            "grep",
-            "sed",
-        ]
+        self.commands = commands or []
 
     def execute(self):
+        if not self.commands:
+            return {
+                "status": "SKIP",
+                "message": "No commands are configured for availability testing.",
+                "commands": [],
+            }
+
         results = []
 
         for command in self.commands:
@@ -39,7 +42,11 @@ class CommandAvailabilityTest(TestCase):
 
             try:
                 if command in ("sh", "bash"):
-                    test_command = [command, "-c", "printf 'compatibility-test-ok\n'"]
+                    test_command = [
+                        command,
+                        "-c",
+                        "printf 'compatibility-test-ok\\n'",
+                    ]
                 else:
                     test_command = [command, "--version"]
 
@@ -57,9 +64,17 @@ class CommandAvailabilityTest(TestCase):
 
                 results.append({
                     "command": command,
-                    "status": "PASS" if result.returncode == 0 else "FAIL",
+                    "status": (
+                        "PASS"
+                        if result.returncode == 0
+                        else "FAIL"
+                    ),
                     "path": command_path,
-                    "output": output.splitlines()[0] if output else "",
+                    "output": (
+                        output.splitlines()[0]
+                        if output
+                        else ""
+                    ),
                 })
 
             except Exception as exc:
@@ -71,16 +86,17 @@ class CommandAvailabilityTest(TestCase):
                 })
 
         failed = [
-            item for item in results
+            item
+            for item in results
             if item["status"] == "FAIL"
         ]
 
         return {
             "status": "FAIL" if failed else "PASS",
             "message": (
-                "All required commands are available and executable."
+                "All configured commands are available and executable."
                 if not failed
-                else "Some required commands are unavailable or failed."
+                else "Some configured commands are unavailable or failed."
             ),
             "commands": results,
         }
