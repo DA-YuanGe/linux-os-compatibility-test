@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import json
+import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -16,8 +18,8 @@ class ApplicationCompatibilityTest(TestCase):
             name="application_compatibility",
             category="compatibility",
             description=(
-                "Validate application runtime and platform requirements "
-                "against the current Linux environment."
+                "Validate application runtime, platform and resource "
+                "requirements against the current Linux environment."
             ),
             tags=[
                 "application",
@@ -25,6 +27,9 @@ class ApplicationCompatibilityTest(TestCase):
                 "os",
                 "architecture",
                 "java",
+                "memory",
+                "disk",
+                "resource",
             ],
         )
 
@@ -85,8 +90,6 @@ class ApplicationCompatibilityTest(TestCase):
                 "Unable to execute Java."
             )
 
-        import re
-
         match = re.search(
             r'version "(\d+)(?:\.(\d+))?',
             output,
@@ -99,10 +102,71 @@ class ApplicationCompatibilityTest(TestCase):
 
         return int(match.group(1))
 
+    def _get_available_memory_mb(self):
+        """Return currently available system memory in MB."""
+
+        meminfo = Path("/proc/meminfo")
+
+        if not meminfo.exists():
+            raise RuntimeError(
+                "Unable to determine available system memory."
+            )
+
+        content = meminfo.read_text(
+            encoding="utf-8"
+        )
+
+        for line in content.splitlines():
+            if line.startswith("MemAvailable:"):
+                parts = line.split()
+
+                if len(parts) < 2:
+                    break
+
+                available_kb = int(parts[1])
+
+                return available_kb // 1024
+
+        raise RuntimeError(
+            "MemAvailable information is not available."
+        )
+
+    def _get_disk_free_mb(self):
+        """Return available disk space for the project filesystem."""
+
+        project_root = Path(__file__).resolve().parents[2]
+
+        usage = shutil.disk_usage(
+            project_root
+        )
+
+        return usage.free // (1024 * 1024)
+
+    def _build_result(
+        self,
+        status,
+        message,
+        checks,
+        profile,
+        platform_info,
+    ):
+        return {
+            "status": status,
+            "message": message,
+            "name": self.name,
+            "category": self.category,
+            "description": self.description,
+            "application": self.application_name,
+            "checks": checks,
+            "profile": profile,
+            "platform": platform_info,
+        }
+
     def execute(self):
         checks = []
 
         profile = self._load_profile()
+
         requirements = profile.get(
             "requirements",
             {},
@@ -158,6 +222,11 @@ class ApplicationCompatibilityTest(TestCase):
             0,
         )
 
+        resource_requirements = requirements.get(
+            "resources",
+            {},
+        )
+
         # ---------------------------------------------------------
         # 1. Operating system compatibility
         # ---------------------------------------------------------
@@ -176,20 +245,16 @@ class ApplicationCompatibilityTest(TestCase):
         })
 
         if not os_pass:
-            return {
-                "status": "FAIL",
-                "message": (
+            return self._build_result(
+                "FAIL",
+                (
                     f"Operating system '{current_os}' "
                     "is not supported by the application."
                 ),
-                "name": self.name,
-                "category": self.category,
-                "description": self.description,
-                "application": self.application_name,
-                "checks": checks,
-                "profile": profile,
-                "platform": platform_info,
-            }
+                checks,
+                profile,
+                platform_info,
+            )
 
         # ---------------------------------------------------------
         # 2. CPU architecture compatibility
@@ -212,20 +277,16 @@ class ApplicationCompatibilityTest(TestCase):
         })
 
         if not architecture_pass:
-            return {
-                "status": "FAIL",
-                "message": (
+            return self._build_result(
+                "FAIL",
+                (
                     f"Architecture '{current_architecture}' "
                     "is not supported by the application."
                 ),
-                "name": self.name,
-                "category": self.category,
-                "description": self.description,
-                "application": self.application_name,
-                "checks": checks,
-                "profile": profile,
-                "platform": platform_info,
-            }
+                checks,
+                profile,
+                platform_info,
+            )
 
         # ---------------------------------------------------------
         # 3. Java runtime compatibility
@@ -250,44 +311,133 @@ class ApplicationCompatibilityTest(TestCase):
             })
 
             if not java_pass:
-                return {
-                    "status": "FAIL",
-                    "message": (
+                return self._build_result(
+                    "FAIL",
+                    (
                         f"Java {current_java} does not "
                         f"meet the minimum required "
                         f"version {minimum_java}."
                     ),
-                    "name": self.name,
-                    "category": self.category,
-                    "description": self.description,
-                    "application": self.application_name,
-                    "checks": checks,
-                    "profile": profile,
-                    "platform": platform_info,
-                }
+                    checks,
+                    profile,
+                    platform_info,
+                )
 
         # ---------------------------------------------------------
-        # 4. Compatibility result
+        # 4. Memory compatibility
+        # ---------------------------------------------------------
+
+        memory_requirements = resource_requirements.get(
+            "memory",
+            {}
+        )
+
+        minimum_memory_mb = memory_requirements.get(
+            "minimum_mb"
+        )
+
+        if minimum_memory_mb is not None:
+            current_memory_mb = (
+                self._get_available_memory_mb()
+            )
+
+            memory_pass = (
+                current_memory_mb
+                >= minimum_memory_mb
+            )
+
+            checks.append({
+                "name": "memory",
+                "status": (
+                    "PASS"
+                    if memory_pass
+                    else "FAIL"
+                ),
+                "current_available_mb": current_memory_mb,
+                "required_minimum_mb": minimum_memory_mb,
+            })
+
+            if not memory_pass:
+                return self._build_result(
+                    "FAIL",
+                    (
+                        f"Available memory "
+                        f"{current_memory_mb} MB does not "
+                        f"meet the minimum required "
+                        f"{minimum_memory_mb} MB."
+                    ),
+                    checks,
+                    profile,
+                    platform_info,
+                )
+
+        # ---------------------------------------------------------
+        # 5. Disk compatibility
+        # ---------------------------------------------------------
+
+        disk_requirements = resource_requirements.get(
+            "disk",
+            {}
+        )
+
+        minimum_free_mb = disk_requirements.get(
+            "minimum_free_mb"
+        )
+
+        if minimum_free_mb is not None:
+            current_free_mb = (
+                self._get_disk_free_mb()
+            )
+
+            disk_pass = (
+                current_free_mb
+                >= minimum_free_mb
+            )
+
+            checks.append({
+                "name": "disk",
+                "status": (
+                    "PASS"
+                    if disk_pass
+                    else "FAIL"
+                ),
+                "current_free_mb": current_free_mb,
+                "required_minimum_mb": minimum_free_mb,
+            })
+
+            if not disk_pass:
+                return self._build_result(
+                    "FAIL",
+                    (
+                        f"Available disk space "
+                        f"{current_free_mb} MB does not "
+                        f"meet the minimum required "
+                        f"{minimum_free_mb} MB."
+                    ),
+                    checks,
+                    profile,
+                    platform_info,
+                )
+
+        # ---------------------------------------------------------
+        # 6. Compatibility result
         #
-        # Port availability, HTTP health and API checks are
-        # intentionally handled by DeploymentTest.
-        # ApplicationCompatibilityTest only validates whether
-        # the current environment satisfies the application's
-        # declared platform and runtime requirements.
+        # Network port availability, HTTP health and API checks
+        # are handled by DeploymentTest.
+        #
+        # ApplicationCompatibilityTest validates whether the
+        # current environment satisfies the application's
+        # declared platform, runtime and resource requirements.
         # ---------------------------------------------------------
 
-        return {
-            "status": "PASS",
-            "message": (
+        return self._build_result(
+            "PASS",
+            (
                 f"Application "
                 f"{self.application_name} "
                 "is compatible with the current environment."
             ),
-            "name": self.name,
-            "category": self.category,
-            "description": self.description,
-            "application": self.application_name,
-            "checks": checks,
-            "profile": profile,
-            "platform": platform_info,
-        }
+            checks,
+            profile,
+            platform_info,
+        )

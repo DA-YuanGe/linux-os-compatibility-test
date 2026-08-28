@@ -3,7 +3,6 @@
     "demo-java-app": {
       "name": "Demo Java Application",
       "description": "Demo application used for Linux compatibility testing.",
-
       "requirements": {
         "os": {
           "supported": [
@@ -13,34 +12,37 @@
             "uos"
           ]
         },
-
         "architectures": {
           "supported": [
             "x86_64",
             "arm64"
           ]
         },
-
         "runtime": {
           "java": {
             "required": true,
             "minimum_major_version": 17
           }
         },
-
         "network": {
           "port": 8080,
           "protocol": "http"
         },
-
         "health": {
           "path": "/health",
           "expected_status": 200
         },
-
         "api": {
           "path": "/api/test",
           "expected_status": 200
+        },
+        "resources": {
+          "memory": {
+            "minimum_mb": 512
+          },
+          "disk": {
+            "minimum_free_mb": 1024
+          }
         }
       }
     }

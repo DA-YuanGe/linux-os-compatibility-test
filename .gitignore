@@ -33,3 +33,6 @@ reports/
 
 # Temporary output
 /tmp/
+
+# Runtime data
+data/

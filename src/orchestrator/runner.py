@@ -8,6 +8,7 @@ from collector.environment import EnvironmentCollector
 from executor.test_runner import TestRunner
 from compatibility.evaluator import CompatibilityEvaluator
 from report.generator import ReportGenerator
+from history.store import TestHistoryStore
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -26,6 +27,9 @@ COMPATIBILITY_RULES_FILE = (
 
 REPORT_DIR = PROJECT_ROOT / "reports"
 REPORT_FILE = REPORT_DIR / "result.json"
+
+HISTORY_DIR = PROJECT_ROOT / "data"
+HISTORY_DATABASE = HISTORY_DIR / "history.db"
 
 
 def load_config():
@@ -46,11 +50,17 @@ def load_compatibility_rules():
 
 def run_test():
     config = load_config()
+    rules = load_compatibility_rules()
 
     collector = EnvironmentCollector()
+
     environment = collector.collect()
 
-    test_runner = TestRunner(config)
+    test_runner = TestRunner(
+        config,
+        rules,
+    )
+
     test_results = test_runner.run_all()
 
     passed = sum(
@@ -71,11 +81,15 @@ def run_test():
         if result["status"] == "SKIP"
     )
 
-    status = "FAIL" if failed > 0 else "PASS"
+    status = (
+        "FAIL"
+        if failed > 0
+        else "PASS"
+    )
 
-    rules = load_compatibility_rules()
-
-    evaluator = CompatibilityEvaluator(rules)
+    evaluator = CompatibilityEvaluator(
+        rules
+    )
 
     compatibility = evaluator.evaluate(
         environment,
@@ -127,6 +141,7 @@ def main():
             indent=2,
             ensure_ascii=False,
         )
+
         file.write("\n")
 
     report_generator = ReportGenerator(
@@ -142,17 +157,33 @@ def main():
         report_generator.generate_html()
     )
 
+    history_store = TestHistoryStore(
+        HISTORY_DATABASE
+    )
+
+    history_id = history_store.save(
+        result
+    )
+
     print()
     print(
         f"Report generated: {REPORT_FILE}"
     )
+
     print(
         f"Markdown report generated: "
         f"{markdown_report}"
     )
+
     print(
         f"HTML report generated: "
         f"{html_report}"
+    )
+
+    print(
+        f"History record saved: "
+        f"{HISTORY_DATABASE} "
+        f"(ID: {history_id})"
     )
 
 

@@ -19,8 +19,9 @@ from testcase.application_compatibility import ApplicationCompatibilityTest
 class TestRunner:
     """Execute configured compatibility test cases."""
 
-    def __init__(self, config):
+    def __init__(self, config, compatibility_rules=None):
         self.config = config
+        self.compatibility_rules = compatibility_rules or {}
         self.test_cases = self._build_test_cases()
 
     def _build_test_cases(self):
@@ -73,7 +74,9 @@ class TestRunner:
             True,
         ):
             test_cases.append(
-                DependencyTest()
+                DependencyTest(
+                    self.compatibility_rules
+                )
             )
 
         if tests_config.get(

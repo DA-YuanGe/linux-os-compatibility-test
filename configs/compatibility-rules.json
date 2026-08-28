@@ -20,8 +20,14 @@
         "centos",
         "rocky",
         "almalinux",
-        "fedora",
-        "openEuler"
+        "fedora"
+      ]
+    },
+    "openeuler": {
+      "name": "openEuler",
+      "supported": true,
+      "ids": [
+        "openeuler"
       ]
     },
     "kylin": {
@@ -74,20 +80,23 @@
       ]
     }
   },
-  "compatibility": {
-    "supported_os": [
+  "os": {
+    "supported": [
       "ubuntu",
       "debian",
       "kylin",
       "uos",
+      "uniontech",
       "rhel",
       "centos",
       "rocky",
       "almalinux",
       "fedora",
-      "openEuler"
-    ],
-    "supported_architectures": [
+      "openeuler"
+    ]
+  },
+  "architecture": {
+    "supported": [
       "x86_64",
       "amd64",
       "aarch64",
@@ -97,5 +106,60 @@
       "ppc64le",
       "s390x"
     ]
+  },
+  "system_capabilities": {
+    "commands": {
+      "required": [
+        "sh",
+        "bash",
+        "ls",
+        "cat",
+        "grep",
+        "sed"
+      ]
+    },
+    "filesystem": {
+      "required": true
+    },
+    "permissions": {
+      "required": true
+    },
+    "process": {
+      "required": true
+    },
+    "network": {
+      "tcp_required": true
+    }
+  },
+  "国产_os": {
+    "enabled": true,
+    "distributions": {
+      "kylin": {
+        "name": "Kylin Linux",
+        "family": "kylin",
+        "supported_architectures": [
+          "x86_64",
+          "arm64"
+        ]
+      },
+      "uos": {
+        "name": "UnionTech UOS",
+        "family": "debian",
+        "supported_architectures": [
+          "x86_64",
+          "arm64"
+        ]
+      },
+      "openeuler": {
+        "name": "openEuler",
+        "family": "rhel",
+        "supported_architectures": [
+          "x86_64",
+          "arm64",
+          "ppc64le",
+          "s390x"
+        ]
+      }
+    }
   }
 }

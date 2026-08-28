@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 
-from pathlib import Path
-
 
 class CompatibilityEvaluator:
-    """Evaluate whether an application is compatible with the current environment."""
+    """Evaluate application compatibility from collected test results."""
 
     def __init__(self, rules):
         self.rules = rules or {}
@@ -12,41 +10,62 @@ class CompatibilityEvaluator:
     def evaluate(self, environment, test_results):
         checks = []
 
+        # Platform compatibility
         checks.extend(
-            self._evaluate_os(environment)
+            self._evaluate_os(
+                environment,
+                test_results,
+            )
         )
 
         checks.extend(
-            self._evaluate_architecture(environment)
+            self._evaluate_architecture(
+                environment,
+                test_results,
+            )
+        )
+
+        # Application environment requirements
+        checks.extend(
+            self._evaluate_java(
+                test_results,
+            )
         )
 
         checks.extend(
-            self._evaluate_java(test_results)
+            self._evaluate_memory(
+                test_results,
+            )
         )
 
         checks.extend(
-            self._evaluate_memory(environment)
+            self._evaluate_disk(
+                test_results,
+            )
+        )
+
+        # Deployment requirements
+        checks.extend(
+            self._evaluate_ports(
+                test_results,
+            )
         )
 
         checks.extend(
-            self._evaluate_disk(environment)
-        )
-
-        checks.extend(
-            self._evaluate_ports(test_results)
-        )
-
-        checks.extend(
-            self._evaluate_application(test_results)
+            self._evaluate_application(
+                test_results,
+            )
         )
 
         failed = [
-            item for item in checks
+            item
+            for item in checks
             if item["status"] == "FAIL"
         ]
 
         warnings = [
-            item for item in checks
+            item
+            for item in checks
             if item["status"] == "WARN"
         ]
 
@@ -67,7 +86,8 @@ class CompatibilityEvaluator:
             "summary": {
                 "total": len(checks),
                 "passed": sum(
-                    1 for item in checks
+                    1
+                    for item in checks
                     if item["status"] == "PASS"
                 ),
                 "warnings": len(warnings),
@@ -75,185 +95,286 @@ class CompatibilityEvaluator:
             },
         }
 
-    def _evaluate_os(self, environment):
-        rule = self.rules.get("os", {})
-        supported = rule.get("supported", [])
+    # ---------------------------------------------------------
+    # OS
+    # ---------------------------------------------------------
 
-        actual = (
-            environment
-            .get("os", {})
-            .get("id", "")
-            .lower()
+    def _evaluate_os(
+        self,
+        environment,
+        test_results,
+    ):
+        os_info = environment.get("os", {})
+
+        current_os = os_info.get(
+            "id",
+            "unknown",
+        ).lower()
+
+        platforms = self.rules.get(
+            "platforms",
+            {},
         )
 
-        if not supported:
-            return []
+        matched_platform = None
 
-        if actual in [
-            item.lower()
-            for item in supported
-        ]:
+        for platform_id, platform_rule in platforms.items():
+            supported_ids = [
+                str(item).lower()
+                for item in platform_rule.get(
+                    "ids",
+                    [],
+                )
+            ]
+
+            if current_os in supported_ids:
+                matched_platform = platform_id
+                break
+
+        if matched_platform is None:
+            matched_platform = "generic-linux"
+
+        platform_rule = platforms.get(
+            matched_platform,
+            {},
+        )
+
+        supported = platform_rule.get(
+            "supported",
+            False,
+        )
+
+        if supported:
             return [{
                 "name": "os",
                 "status": "PASS",
-                "message": "Operating system is supported.",
-                "actual": actual,
-                "supported": supported,
+                "message": (
+                    "Operating system compatibility "
+                    "requirement satisfied."
+                ),
+                "actual": current_os,
+                "family": matched_platform,
+                "platform": matched_platform,
+                "supported": True,
             }]
 
         return [{
             "name": "os",
             "status": "FAIL",
-            "message": "Operating system is not supported.",
-            "actual": actual,
-            "supported": supported,
+            "message": (
+                "Operating system compatibility "
+                "requirement failed."
+            ),
+            "actual": current_os,
+            "family": matched_platform,
+            "platform": matched_platform,
+            "supported": False,
         }]
 
-    def _evaluate_architecture(self, environment):
-        rule = self.rules.get("architecture", {})
-        supported = rule.get("supported", [])
+    # ---------------------------------------------------------
+    # Architecture
+    # ---------------------------------------------------------
 
-        actual = (
-            environment
-            .get("cpu", {})
-            .get("architecture", "")
-            .lower()
-        )
+    def _evaluate_architecture(
+        self,
+        environment,
+        test_results,
+    ):
+        for result in test_results:
+            if result.get("name") != "platform_compatibility":
+                continue
 
-        if not supported:
-            return []
+            if result.get("status") == "PASS":
+                return [{
+                    "name": "architecture",
+                    "status": "PASS",
+                    "message": (
+                        "CPU architecture compatibility "
+                        "test passed."
+                    ),
+                    "actual": result.get("architecture"),
+                    "family": result.get(
+                        "architecture_id"
+                    ),
+                }]
 
-        if actual in [
-            item.lower()
-            for item in supported
-        ]:
             return [{
                 "name": "architecture",
-                "status": "PASS",
-                "message": "CPU architecture is supported.",
-                "actual": actual,
-                "supported": supported,
+                "status": "FAIL",
+                "message": (
+                    "CPU architecture compatibility "
+                    "test failed."
+                ),
+                "actual": result.get("architecture"),
             }]
 
         return [{
             "name": "architecture",
             "status": "FAIL",
-            "message": "CPU architecture is not supported.",
-            "actual": actual,
-            "supported": supported,
+            "message": (
+                "Platform compatibility test result "
+                "was not found."
+            ),
         }]
 
-    def _evaluate_java(self, test_results):
-        rule = self.rules.get("java", {})
-        minimum = rule.get("min_major_version")
+    # ---------------------------------------------------------
+    # Java
+    # ---------------------------------------------------------
 
-        if minimum is None:
-            return []
+    def _evaluate_java(self, test_results):
+        """
+        Read Java compatibility from the application
+        compatibility test result.
+
+        ApplicationCompatibilityTest is the single source
+        of truth for application runtime requirements.
+        """
 
         for result in test_results:
-            if result.get("name") != "dependency_check":
+            if result.get("name") != "application_compatibility":
                 continue
 
-            for dependency in result.get("dependencies", []):
-                if dependency.get("name") != "java":
+            for check in result.get("checks", []):
+                if check.get("name") != "java":
                     continue
 
-                actual = dependency.get("major_version")
-
-                if actual is None:
-                    return [{
-                        "name": "java",
-                        "status": "FAIL",
-                        "message": "Java version could not be determined.",
-                    }]
-
-                if actual >= minimum:
-                    return [{
-                        "name": "java",
-                        "status": "PASS",
-                        "message": "Java version requirement satisfied.",
-                        "actual_major_version": actual,
-                        "required_major_version": minimum,
-                    }]
+                status = check.get(
+                    "status",
+                    "FAIL",
+                )
 
                 return [{
                     "name": "java",
-                    "status": "FAIL",
-                    "message": "Java version requirement is not satisfied.",
-                    "actual_major_version": actual,
-                    "required_major_version": minimum,
+                    "status": status,
+                    "message": (
+                        "Java runtime compatibility "
+                        "requirement satisfied."
+                        if status == "PASS"
+                        else (
+                            "Java runtime compatibility "
+                            "requirement failed."
+                        )
+                    ),
+                    "actual_major_version": check.get(
+                        "current"
+                    ),
+                    "required_major_version": check.get(
+                        "required_minimum"
+                    ),
                 }]
 
         return [{
             "name": "java",
             "status": "FAIL",
-            "message": "Java dependency check result was not found.",
-            "required_major_version": minimum,
+            "message": (
+                "Application Java compatibility "
+                "result was not found."
+            ),
         }]
 
-    def _evaluate_memory(self, environment):
-        rule = self.rules.get("memory", {})
-        minimum_mb = rule.get("min_mb")
+    # ---------------------------------------------------------
+    # Memory
+    # ---------------------------------------------------------
 
-        if minimum_mb is None:
-            return []
+    def _evaluate_memory(self, test_results):
+        for result in test_results:
+            if result.get("name") != "application_compatibility":
+                continue
 
-        actual_mb = (
-            environment
-            .get("memory", {})
-            .get("total_mb", 0)
-        )
+            for check in result.get(
+                "checks",
+                [],
+            ):
+                if check.get("name") != "memory":
+                    continue
 
-        if actual_mb >= minimum_mb:
-            return [{
-                "name": "memory",
-                "status": "PASS",
-                "message": "Available system memory satisfies requirement.",
-                "actual_mb": actual_mb,
-                "required_mb": minimum_mb,
-            }]
+                status = check.get(
+                    "status",
+                    "FAIL",
+                )
+
+                return [{
+                    "name": "memory",
+                    "status": status,
+                    "message": (
+                        "Application memory "
+                        "requirement satisfied."
+                        if status == "PASS"
+                        else (
+                            "Application memory "
+                            "requirement failed."
+                        )
+                    ),
+                    "actual_available_mb": check.get(
+                        "current_available_mb"
+                    ),
+                    "required_minimum_mb": check.get(
+                        "required_minimum_mb"
+                    ),
+                }]
 
         return [{
             "name": "memory",
             "status": "FAIL",
-            "message": "Available system memory is below requirement.",
-            "actual_mb": actual_mb,
-            "required_mb": minimum_mb,
+            "message": (
+                "Application memory compatibility "
+                "result was not found."
+            ),
         }]
 
-    def _evaluate_disk(self, environment):
-        rule = self.rules.get("disk", {})
-        minimum_gb = rule.get("min_gb")
+    # ---------------------------------------------------------
+    # Disk
+    # ---------------------------------------------------------
 
-        if minimum_gb is None:
-            return []
+    def _evaluate_disk(self, test_results):
+        for result in test_results:
+            if result.get("name") != "application_compatibility":
+                continue
 
-        actual_bytes = (
-            environment
-            .get("disk", {})
-            .get("available_bytes", 0)
-        )
+            for check in result.get(
+                "checks",
+                [],
+            ):
+                if check.get("name") != "disk":
+                    continue
 
-        actual_gb = actual_bytes / (
-            1024 * 1024 * 1024
-        )
+                status = check.get(
+                    "status",
+                    "FAIL",
+                )
 
-        if actual_gb >= minimum_gb:
-            return [{
-                "name": "disk",
-                "status": "PASS",
-                "message": "Available disk space satisfies requirement.",
-                "actual_gb": round(actual_gb, 2),
-                "required_gb": minimum_gb,
-            }]
+                return [{
+                    "name": "disk",
+                    "status": status,
+                    "message": (
+                        "Application disk "
+                        "requirement satisfied."
+                        if status == "PASS"
+                        else (
+                            "Application disk "
+                            "requirement failed."
+                        )
+                    ),
+                    "actual_free_mb": check.get(
+                        "current_free_mb"
+                    ),
+                    "required_minimum_mb": check.get(
+                        "required_minimum_mb"
+                    ),
+                }]
 
         return [{
             "name": "disk",
             "status": "FAIL",
-            "message": "Available disk space is below requirement.",
-            "actual_gb": round(actual_gb, 2),
-            "required_gb": minimum_gb,
+            "message": (
+                "Application disk compatibility "
+                "result was not found."
+            ),
         }]
+
+    # ---------------------------------------------------------
+    # Ports
+    # ---------------------------------------------------------
 
     def _evaluate_ports(self, test_results):
         required_ports = (
@@ -270,15 +391,17 @@ class CompatibilityEvaluator:
         deployment_results = [
             result
             for result in test_results
-            if result.get("application")
-            == "demo-java-app"
+            if result.get("name") == "deployment_test"
         ]
 
         for port in required_ports:
             matched = False
 
             for result in deployment_results:
-                for check in result.get("checks", []):
+                for check in result.get(
+                    "checks",
+                    [],
+                ):
                     if (
                         check.get("name") == "port_check"
                         and check.get("port") == port
@@ -287,32 +410,50 @@ class CompatibilityEvaluator:
                         matched = True
                         break
 
-            if matched:
-                checks.append({
-                    "name": f"port_{port}",
-                    "status": "PASS",
-                    "message": "Required application port is available.",
-                    "port": port,
-                })
-            else:
-                checks.append({
-                    "name": f"port_{port}",
-                    "status": "FAIL",
-                    "message": "Required application port check failed.",
-                    "port": port,
-                })
+                if matched:
+                    break
+
+            checks.append({
+                "name": f"port_{port}",
+                "status": (
+                    "PASS"
+                    if matched
+                    else "FAIL"
+                ),
+                "message": (
+                    "Required application port "
+                    "is available."
+                    if matched
+                    else (
+                        "Required application port "
+                        "check failed."
+                    )
+                ),
+                "port": port,
+            })
 
         return checks
+
+    # ---------------------------------------------------------
+    # Application deployment
+    # ---------------------------------------------------------
 
     def _evaluate_application(self, test_results):
         deployment = [
             result
             for result in test_results
-            if result.get("name") == "application_deployment"
+            if result.get("name") == "deployment_test"
         ]
 
         if not deployment:
-            return []
+            return [{
+                "name": "application_runtime",
+                "status": "FAIL",
+                "message": (
+                    "Application deployment test "
+                    "result was not found."
+                ),
+            }]
 
         result = deployment[0]
 
@@ -320,11 +461,17 @@ class CompatibilityEvaluator:
             return [{
                 "name": "application_runtime",
                 "status": "PASS",
-                "message": "Application deployment and health checks passed.",
+                "message": (
+                    "Application deployment and "
+                    "health checks passed."
+                ),
             }]
 
         return [{
             "name": "application_runtime",
             "status": "FAIL",
-            "message": "Application deployment or health checks failed.",
+            "message": (
+                "Application deployment or "
+                "health checks failed."
+            ),
         }]

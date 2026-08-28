@@ -120,9 +120,14 @@ class PlatformDetector:
             "rocky",
             "almalinux",
             "fedora",
-            "openEuler".lower(),
         ):
             family = "rhel"
+
+        elif os_id in (
+            "openeuler",
+            "openEuler".lower(),
+        ):
+            family = "openeuler"
 
         elif "rhel" in id_like:
             family = "rhel"
